@@ -66,6 +66,28 @@ double distance(struct Point a,struct Point b)
 	return sqrt((b.x-a.x)*(b.x-a.x)+(b.z-a.z)*(b.z-a.z));
 }
 
+/* Makes a mapping between logical grid coordinates, the exact point and the actual storage index
+ * The points are mapped as follows:
+ * 1 2
+ *  0     
+ * 4 3 
+ * TODO: ints are sorta naive
+ */
+int gridmap(int x,int y,short pos)
+{
+	switch (pos)
+	{
+		/* Centerpoints are layed out first */
+		case 0: return GRIDRES*y+x; break;
+		/* Rest follows */
+		case 1: return GRIDRES*GRIDRES+(GRIDRES+1)*y+x; break;
+		case 2: return GRIDRES*GRIDRES+(GRIDRES+1)*y+x+1; break;
+		case 3: return GRIDRES*GRIDRES+(GRIDRES+1)*(y+1)+x+1; break;
+		case 4: return GRIDRES*GRIDRES+(GRIDRES+1)*(y+1)+x; break;
+		default: return 0; break;
+	}
+}
+
 void create_lists()
 {
 	dlist=glGenLists(1);
@@ -82,12 +104,13 @@ void create_lists()
 			landscape_frame[i].z=urand(-LIM,LIM);
 		}
 		
-		/* Now drawing the thing up! TODO the adjacement points get calculated a few times, I'm lazy to optimize it */
+		/* The gridpoints */
+		struct Point points[GRIDRES*GRIDRES+(GRIDRES+1)*(GRIDRES+1)];
+		
+		/* Generating the grid TODO still has repetitions in calculation */
 		for (i=0;i<GRIDRES;i++)
 			for (j=0;j<GRIDRES;j++)
 			{
-				struct Point points[5];
-				
 				/* Point position helpers, position is relative to center point */
 				double point_pos[5][2]={ {0.5,0.5},{0,0},{1,0},{1,1},{0,1} };
 				
@@ -95,38 +118,46 @@ void create_lists()
 				 * as a wheighted average of landscape points given distance to them */
 				for (k=1;k<5;k++)
 				{
+					/* Detecting the true index of the point for ease */
+					int p=gridmap(i,j,k);
 					/* X and Z lie on the grid, it's simple */
-					points[k].x=-LIM+(i+point_pos[k][0])*2.0*LIM/GRIDRES;
-					points[k].z=-LIM+(j+point_pos[k][1])*2.0*LIM/GRIDRES;
+					points[p].x=-LIM+(i+point_pos[k][0])*2.0*LIM/GRIDRES;
+					points[p].z=-LIM+(j+point_pos[k][1])*2.0*LIM/GRIDRES;
 					/* For Y, we collect all the heights and weight it up */
 					double sum_dist=0;
-					points[k].y=0; 
+					points[p].y=0; 
 					int w;
 					for (w=0;w<NPOINTS;w++)
 					{
 						/* 1/dist^k, the closer the more importart the influence is */
-						double dist=pow(distance(points[k],landscape_frame[w]),-2.5);
+						double dist=pow(distance(points[p],landscape_frame[w]),-2.5);
 						sum_dist+=dist;
-						points[k].y+=landscape_frame[w].y*dist;
+						points[p].y+=landscape_frame[w].y*dist;
 						
 					}
-					points[k].y/=sum_dist;
+					points[p].y/=sum_dist;
 				}
 				
 				/* The centerpoint is the average of all the rest */
-				points[0].x=(points[1].x+points[2].x)/2;
-				points[0].y=(points[1].y+points[2].y+points[3].y+points[4].y)/4;
-				points[0].z=(points[2].z+points[3].z)/2;
-				
+				points[gridmap(i,j,0)].x=(points[gridmap(i,j,1)].x+points[gridmap(i,j,2)].x)/2;
+				points[gridmap(i,j,0)].y=(points[gridmap(i,j,1)].y+points[gridmap(i,j,2)].y+points[gridmap(i,j,3)].y+points[gridmap(i,j,4)].y)/4;
+				points[gridmap(i,j,0)].z=(points[gridmap(i,j,2)].z+points[gridmap(i,j,3)].z)/2;
+			}
+		
+		/* Now drawing the thing up! */
+		for (i=0;i<GRIDRES;i++)
+			for (j=0;j<GRIDRES;j++)
+			{
 				/* Just drawing the fan of triangles centered at centerpoint */
 				glBegin(GL_TRIANGLE_FAN);
 					for (k=0;k<5;k++)
 					{
-						set_height_color(points[k].y);
-						glVertex3f(points[k].x,points[k].y,points[k].z);
+						int p=gridmap(i,j,k);
+						set_height_color(points[p].y);
+						glVertex3f(points[p].x,points[p].y,points[p].z);
 					}
-					set_height_color(points[1].y);
-					glVertex3f(points[1].x,points[1].y,points[1].z);
+					set_height_color(points[gridmap(i,j,1)].y);
+					glVertex3f(points[gridmap(i,j,1)].x,points[gridmap(i,j,1)].y,points[gridmap(i,j,1)].z);
 				glEnd();
 			}
 		

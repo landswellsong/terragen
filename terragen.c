@@ -77,6 +77,38 @@ double distance(struct Point a,struct Point b)
 	return sqrt((b.x-a.x)*(b.x-a.x)+(b.z-a.z)*(b.z-a.z));
 }
 
+/* Those are suboptimal and display some poor programming practice but we're after a demo anyway */
+struct Point vec_plus(struct Point a,struct Point b)
+{
+	struct Point ret={ b.x+a.x, b.y+a.y, b.z+a.z };
+	return ret;
+}
+struct Point vec_minus(struct Point a,struct Point b)
+{
+	struct Point ret={ b.x-a.x, b.y-a.y, b.z-a.z };
+	return ret;
+}
+double vec_length(struct Point vec)
+{
+	return sqrt(vec.x*vec.x+vec.y*vec.y+vec.z*vec.z);
+}
+struct Point vec_cross(struct Point v,struct Point u)
+{
+	struct Point ret={ v.y*u.z-v.z*u.y, v.z*u.x-v.x*u.z, v.x*u.y-v.y*u.x };
+	return ret;
+}
+struct Point vec_normalize(struct Point vec)
+{
+	double l=vec_length(vec);
+	struct Point ret={ vec.x/l,vec.y/l,vec.z/l };
+	return ret;
+}
+struct Point vec_mult(struct Point vec,double m)
+{
+	struct Point ret={ vec.x*m,vec.y*m,vec.z*m };
+	return ret;
+}
+
 /* Makes a mapping between logical grid coordinates, the exact point and the actual storage index
  * The points are mapped as follows:
  * 1 2
@@ -170,9 +202,42 @@ void generate_landscape(short algorithm)
 				pts[0]->z=(pts[2]->z+pts[3]->z)/2;
 			}
 		}
+		
+	/* Now when all the points are ready, we can do normals */
+	for (i=0;i<GRIDRES;i++)
+		for (j=0;j<GRIDRES;j++)
+		{
+			/* Calculating the normal of all the points */
+			for (k=0;k<5;k++)
+			{
+				/* Detecting the true index of the point for ease */
+				int p=gridmap(i,j,k);
+				/* Not calculating redundant steps */
+				if (!points[p].normal_set)
+				{
+					struct Point *normal=&points[p].normal;
+					
+					/* TODO prettyfy this, I'm sure there's a way. I know this is horrific */
+					if (k==0)
+					{
+						*normal=vec_plus(*normal,vec_cross(vec_minus(points[gridmap(i,j,0)].point,points[gridmap(i,j,2)].point),
+												vec_minus(points[gridmap(i,j,0)].point,points[gridmap(i,j,1)].point)));
+						*normal=vec_plus(*normal,vec_cross(vec_minus(points[gridmap(i,j,0)].point,points[gridmap(i,j,3)].point),
+												vec_minus(points[gridmap(i,j,0)].point,points[gridmap(i,j,2)].point)));
+						*normal=vec_plus(*normal,vec_cross(vec_minus(points[gridmap(i,j,0)].point,points[gridmap(i,j,4)].point),
+												vec_minus(points[gridmap(i,j,0)].point,points[gridmap(i,j,3)].point)));
+						*normal=vec_plus(*normal,vec_cross(vec_minus(points[gridmap(i,j,0)].point,points[gridmap(i,j,1)].point),
+												vec_minus(points[gridmap(i,j,0)].point,points[gridmap(i,j,4)].point)));
+					} else continue;
+						
+					*normal=vec_normalize(*normal);
+					points[p].normal_set=1;
+				}
+			}
+		}
 }
 
-void create_lists(short wireframe)
+void create_lists(short wireframe,short normals)
 {
 	if (dlist==0)
 		glDeleteLists(dlist,1);
@@ -195,6 +260,25 @@ void create_lists(short wireframe)
 					set_height_color(points[gridmap(i,j,1)].point.y);
 					glVertex3f(points[gridmap(i,j,1)].point.x,points[gridmap(i,j,1)].point.y,points[gridmap(i,j,1)].point.z);
 				glEnd();
+				/* Drawing normal vectors if necessary */
+				if (normals)
+				{
+					glColor4f(1.0,1.0,1.0,1.0);
+					glBegin(GL_LINES);
+						for (k=wireframe? 1: 0;k<5;k++)
+						{
+							int p=gridmap(i,j,k);
+							if (points[p].normal_set)
+							{
+								struct Point pp=points[p].point;
+								struct Point vp=vec_plus(points[p].point,vec_mult(points[p].normal,5));
+								glVertex3f(pp.x,pp.y,pp.z);
+								glVertex3f(vp.x,vp.y,vp.z);
+							}
+						}
+						
+					glEnd();
+				}
 			}
 		
 		/* Drawing the sea */
@@ -264,13 +348,14 @@ void keybs(int key,int mx,int my)
 
 void keyb(unsigned char key,int mx,int my)
 {
-	static short wireframe=0;
+	static short wireframe=0,normals=0;
     switch (key)
     {
-	case 'w': case 'W': wireframe=!wireframe; create_lists(wireframe); break;
+	case 'w': case 'W': wireframe=!wireframe; create_lists(wireframe,normals); break;
+	case 'n': case 'N': normals=!normals; create_lists(wireframe,normals); break;
 	case '-': Camera.dist*= 1.1; break;
 	case '+': Camera.dist*= 0.9; break;
-	case 'r': case 'R': generate_landscape(0); create_lists(wireframe); break;
+	case 'r': case 'R': generate_landscape(0); create_lists(wireframe,normals); break;
     }
     draw();
 }
@@ -298,7 +383,7 @@ int main(int argc,char *argv[])
 	glShadeModel(GL_SMOOTH);
 	
 	generate_landscape(0);
-	create_lists(0);
+	create_lists(0,0);
 	
 	glutReshapeFunc(size);
 	glutDisplayFunc(draw);

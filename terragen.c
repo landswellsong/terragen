@@ -8,7 +8,12 @@
 #include <math.h>
 
 unsigned dlist;
-float cam_alpha=M_PI/4,cam_beta=0.0,cam_dist=1500.0;
+struct camera
+{
+	double alpha;
+	double beta;
+	double dist;
+} Camera = { M_PI/4,0.0,1500.0 };
 int width; int height;
 
 /* Amount of landscape points */
@@ -200,6 +205,11 @@ void draw();
 
 void mouse(int b,int s,int x,int y)
 {
+	if (b==3 || b==4)
+	{
+		Camera.dist*= (b==4)? 1.1 : 0.9;
+		draw();
+	}
 }
 
 void motion(int x,int y)
@@ -207,10 +217,10 @@ void motion(int x,int y)
 	static int mx=-1,my=-1;
 	if (mx<0) mx=x; if (my<0) my=y;
 	int dx=mx-x,dy=my-y;
-	if (dx<0) cam_beta+=M_PI*abs(dx)/64;
-	if (dx>0) cam_beta-=M_PI*abs(dx)/64;
-	if (dy<0) cam_alpha-=M_PI*abs(dy)/64;
-	if (dy>0) cam_alpha+=M_PI*abs(dy)/64;
+	if (dx<0) Camera.beta+=M_PI*abs(dx)/64;
+	if (dx>0) Camera.beta-=M_PI*abs(dx)/64;
+	if (dy<0) Camera.alpha-=M_PI*abs(dy)/64;
+	if (dy>0) Camera.alpha+=M_PI*abs(dy)/64;
 	mx=x;my=y;
 	draw();
 }
@@ -220,7 +230,7 @@ void camera()
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
 	gluPerspective(40.0,(float)width/height,10.0,10000.0);
-	gluLookAt(cam_dist*cos(cam_alpha)*cos(cam_beta),cam_dist*sin(cam_alpha),cam_dist*cos(cam_alpha)*sin(cam_beta),0.0,0.0,0.0,0.0,cos(cam_alpha)>0?1.0:-1.0,0.0);
+	gluLookAt(Camera.dist*cos(Camera.alpha)*cos(Camera.beta),Camera.dist*sin(Camera.alpha),Camera.dist*cos(Camera.alpha)*sin(Camera.beta),0.0,0.0,0.0,0.0,cos(Camera.alpha)>0?1.0:-1.0,0.0);
 	glMatrixMode(GL_MODELVIEW);
 }
 
@@ -236,10 +246,10 @@ void keyb(int key,int mx,int my)
 {
     switch (key)
     {
-	case GLUT_KEY_LEFT: cam_beta+=M_PI/36; break;
-	case GLUT_KEY_RIGHT: cam_beta-=M_PI/36; break;
-	case GLUT_KEY_UP: cam_alpha+=M_PI/36; break;
-	case GLUT_KEY_DOWN: cam_alpha-=M_PI/36; break;
+	case GLUT_KEY_LEFT: Camera.beta+=M_PI/36; break;
+	case GLUT_KEY_RIGHT: Camera.beta-=M_PI/36; break;
+	case GLUT_KEY_UP: Camera.alpha+=M_PI/36; break;
+	case GLUT_KEY_DOWN: Camera.alpha-=M_PI/36; break;
 	case GLUT_KEY_F1: exit(0); break;
     }
     draw();

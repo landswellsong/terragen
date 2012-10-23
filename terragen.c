@@ -3,6 +3,7 @@
 #endif
 #include <GL/glut.h>
 #include <stdlib.h>
+#include <string.h>
 #include <stdio.h>
 #include <math.h>
 
@@ -59,6 +60,11 @@ void set_height_color(double height)
 }
 
 struct Point { double x,y,z; };
+struct TerrainVertex
+{
+	struct Point point,normal;
+	short point_set,normal_set;
+};
 
 /* Note: we only calculate XZ plane distance here */
 double distance(struct Point a,struct Point b)
@@ -105,9 +111,10 @@ void create_lists()
 		}
 		
 		/* The gridpoints */
-		struct Point points[GRIDRES*GRIDRES+(GRIDRES+1)*(GRIDRES+1)];
+		struct TerrainVertex points[GRIDRES*GRIDRES+(GRIDRES+1)*(GRIDRES+1)];
+		memset(&points,0,sizeof(points));
 		
-		/* Generating the grid TODO still has repetitions in calculation */
+		/* Generating the grid */
 		for (i=0;i<GRIDRES;i++)
 			for (j=0;j<GRIDRES;j++)
 			{
@@ -120,28 +127,45 @@ void create_lists()
 				{
 					/* Detecting the true index of the point for ease */
 					int p=gridmap(i,j,k);
-					/* X and Z lie on the grid, it's simple */
-					points[p].x=-LIM+(i+point_pos[k][0])*2.0*LIM/GRIDRES;
-					points[p].z=-LIM+(j+point_pos[k][1])*2.0*LIM/GRIDRES;
-					/* For Y, we collect all the heights and weight it up */
-					double sum_dist=0;
-					points[p].y=0; 
-					int w;
-					for (w=0;w<NPOINTS;w++)
+					/* Not calculating redundant steps */
+					if (!points[p].point_set)
 					{
-						/* 1/dist^k, the closer the more importart the influence is */
-						double dist=pow(distance(points[p],landscape_frame[w]),-2.5);
-						sum_dist+=dist;
-						points[p].y+=landscape_frame[w].y*dist;
+						struct Point *point=&points[p].point;
+						/* X and Z lie on the grid, it's simple */
+						point->x=-LIM+(i+point_pos[k][0])*2.0*LIM/GRIDRES;
+						point->z=-LIM+(j+point_pos[k][1])*2.0*LIM/GRIDRES;
+						/* For Y, we collect all the heights and weight it up */
+						double sum_dist=0;
+						point->y=0; 
+						int w;
+						for (w=0;w<NPOINTS;w++)
+						{
+							/* 1/dist^k, the closer the more importart the influence is */
+							double dist=pow(distance(*point,landscape_frame[w]),-2.5);
+							sum_dist+=dist;
+							point->y+=landscape_frame[w].y*dist;
+							
+						}
+						point->y/=sum_dist;
 						
+						/* Marking as processed */
+						points[p].point_set=1;
 					}
-					points[p].y/=sum_dist;
 				}
 				
 				/* The centerpoint is the average of all the rest */
-				points[gridmap(i,j,0)].x=(points[gridmap(i,j,1)].x+points[gridmap(i,j,2)].x)/2;
-				points[gridmap(i,j,0)].y=(points[gridmap(i,j,1)].y+points[gridmap(i,j,2)].y+points[gridmap(i,j,3)].y+points[gridmap(i,j,4)].y)/4;
-				points[gridmap(i,j,0)].z=(points[gridmap(i,j,2)].z+points[gridmap(i,j,3)].z)/2;
+				if (!points[gridmap(i,j,0)].point_set)
+				{
+					struct Point *pts[]={ &points[gridmap(i,j,0)].point,
+										  &points[gridmap(i,j,1)].point,
+										  &points[gridmap(i,j,2)].point,
+										  &points[gridmap(i,j,3)].point,
+										  &points[gridmap(i,j,4)].point};
+					
+					pts[0]->x=(pts[1]->x+pts[2]->x)/2;
+					pts[0]->y=(pts[1]->y+pts[2]->y+pts[3]->y+pts[4]->y)/4;
+					pts[0]->z=(pts[2]->z+pts[3]->z)/2;
+				}
 			}
 		
 		/* Now drawing the thing up! */
@@ -153,11 +177,11 @@ void create_lists()
 					for (k=0;k<5;k++)
 					{
 						int p=gridmap(i,j,k);
-						set_height_color(points[p].y);
-						glVertex3f(points[p].x,points[p].y,points[p].z);
+						set_height_color(points[p].point.y);
+						glVertex3f(points[p].point.x,points[p].point.y,points[p].point.z);
 					}
-					set_height_color(points[gridmap(i,j,1)].y);
-					glVertex3f(points[gridmap(i,j,1)].x,points[gridmap(i,j,1)].y,points[gridmap(i,j,1)].z);
+					set_height_color(points[gridmap(i,j,1)].point.y);
+					glVertex3f(points[gridmap(i,j,1)].point.x,points[gridmap(i,j,1)].point.y,points[gridmap(i,j,1)].point.z);
 				glEnd();
 			}
 		

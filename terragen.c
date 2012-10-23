@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <math.h>
 
-unsigned dlist;
+unsigned dlist=0;
 struct camera
 {
 	double alpha;
@@ -69,7 +69,7 @@ struct TerrainVertex
 {
 	struct Point point,normal;
 	short point_set,normal_set;
-};
+} points[GRIDRES*GRIDRES+(GRIDRES+1)*(GRIDRES+1)]; /* Global variables suck, never forget it! */
 
 /* Note: we only calculate XZ plane distance here */
 double distance(struct Point a,struct Point b)
@@ -99,87 +99,94 @@ int gridmap(int x,int y,short pos)
 	}
 }
 
-void create_lists()
+void generate_landscape(short algorithm)
 {
-	dlist=glGenLists(1);
-	glNewList(dlist,GL_COMPILE);
-		/* The array of landscape points */
-		struct Point landscape_frame[NPOINTS];
-		int i,j,k;
-		
-		/* Populating with random values, TODO make Y not distribute uniformly */
-		for (i=0;i<NPOINTS;i++)
+	/* The array of landscape points */
+	struct Point landscape_frame[NPOINTS];
+	int i,j,k;
+	
+	/* Populating with random values, TODO make Y not distribute uniformly */
+	for (i=0;i<NPOINTS;i++)
+	{
+		landscape_frame[i].x=urand(-LIM,LIM);
+		landscape_frame[i].y=urand(DEPTH,MOUNT);
+		landscape_frame[i].z=urand(-LIM,LIM);
+	}
+	
+	/* The gridpoints */
+	
+	memset(&points,0,sizeof(points));
+	
+	/* Generating the grid */
+	for (i=0;i<GRIDRES;i++)
+		for (j=0;j<GRIDRES;j++)
 		{
-			landscape_frame[i].x=urand(-LIM,LIM);
-			landscape_frame[i].y=urand(DEPTH,MOUNT);
-			landscape_frame[i].z=urand(-LIM,LIM);
-		}
-		
-		/* The gridpoints */
-		struct TerrainVertex points[GRIDRES*GRIDRES+(GRIDRES+1)*(GRIDRES+1)];
-		memset(&points,0,sizeof(points));
-		
-		/* Generating the grid */
-		for (i=0;i<GRIDRES;i++)
-			for (j=0;j<GRIDRES;j++)
+			/* Point position helpers, position is relative to center point */
+			double point_pos[5][2]={ {0.5,0.5},{0,0},{1,0},{1,1},{0,1} };
+			
+			/* Calculating the position of all the points except the center one 
+				* as a wheighted average of landscape points given distance to them */
+			for (k=1;k<5;k++)
 			{
-				/* Point position helpers, position is relative to center point */
-				double point_pos[5][2]={ {0.5,0.5},{0,0},{1,0},{1,1},{0,1} };
-				
-				/* Calculating the position of all the points except the center one 
-				 * as a wheighted average of landscape points given distance to them */
-				for (k=1;k<5;k++)
+				/* Detecting the true index of the point for ease */
+				int p=gridmap(i,j,k);
+				/* Not calculating redundant steps */
+				if (!points[p].point_set)
 				{
-					/* Detecting the true index of the point for ease */
-					int p=gridmap(i,j,k);
-					/* Not calculating redundant steps */
-					if (!points[p].point_set)
+					struct Point *point=&points[p].point;
+					/* X and Z lie on the grid, it's simple */
+					point->x=-LIM+(i+point_pos[k][0])*2.0*LIM/GRIDRES;
+					point->z=-LIM+(j+point_pos[k][1])*2.0*LIM/GRIDRES;
+					/* For Y, we collect all the heights and weight it up */
+					double sum_dist=0;
+					point->y=0; 
+					int w;
+					for (w=0;w<NPOINTS;w++)
 					{
-						struct Point *point=&points[p].point;
-						/* X and Z lie on the grid, it's simple */
-						point->x=-LIM+(i+point_pos[k][0])*2.0*LIM/GRIDRES;
-						point->z=-LIM+(j+point_pos[k][1])*2.0*LIM/GRIDRES;
-						/* For Y, we collect all the heights and weight it up */
-						double sum_dist=0;
-						point->y=0; 
-						int w;
-						for (w=0;w<NPOINTS;w++)
-						{
-							/* 1/dist^k, the closer the more importart the influence is */
-							double dist=pow(distance(*point,landscape_frame[w]),-2.5);
-							sum_dist+=dist;
-							point->y+=landscape_frame[w].y*dist;
-							
-						}
-						point->y/=sum_dist;
+						/* 1/dist^k, the closer the more importart the influence is */
+						double dist=pow(distance(*point,landscape_frame[w]),-2.5);
+						sum_dist+=dist;
+						point->y+=landscape_frame[w].y*dist;
 						
-						/* Marking as processed */
-						points[p].point_set=1;
 					}
-				}
-				
-				/* The centerpoint is the average of all the rest */
-				if (!points[gridmap(i,j,0)].point_set)
-				{
-					struct Point *pts[]={ &points[gridmap(i,j,0)].point,
-										  &points[gridmap(i,j,1)].point,
-										  &points[gridmap(i,j,2)].point,
-										  &points[gridmap(i,j,3)].point,
-										  &points[gridmap(i,j,4)].point};
+					point->y/=sum_dist;
 					
-					pts[0]->x=(pts[1]->x+pts[2]->x)/2;
-					pts[0]->y=(pts[1]->y+pts[2]->y+pts[3]->y+pts[4]->y)/4;
-					pts[0]->z=(pts[2]->z+pts[3]->z)/2;
+					/* Marking as processed */
+					points[p].point_set=1;
 				}
 			}
-		
-		/* Now drawing the thing up! */
+			
+			/* The centerpoint is the average of all the rest */
+			if (!points[gridmap(i,j,0)].point_set)
+			{
+				struct Point *pts[]={ &points[gridmap(i,j,0)].point,
+										&points[gridmap(i,j,1)].point,
+										&points[gridmap(i,j,2)].point,
+										&points[gridmap(i,j,3)].point,
+										&points[gridmap(i,j,4)].point};
+				
+				pts[0]->x=(pts[1]->x+pts[2]->x)/2;
+				pts[0]->y=(pts[1]->y+pts[2]->y+pts[3]->y+pts[4]->y)/4;
+				pts[0]->z=(pts[2]->z+pts[3]->z)/2;
+			}
+		}
+}
+
+void create_lists(short wireframe)
+{
+	if (dlist==0)
+		glDeleteLists(dlist,1);
+	dlist=glGenLists(1);
+	/* Drawing the thing up! */
+	glNewList(dlist,GL_COMPILE);
+		int i,j,k;
 		for (i=0;i<GRIDRES;i++)
 			for (j=0;j<GRIDRES;j++)
 			{
 				/* Just drawing the fan of triangles centered at centerpoint */
-				glBegin(GL_TRIANGLE_FAN);
-					for (k=0;k<5;k++)
+				glBegin(wireframe? GL_LINE_LOOP : GL_TRIANGLE_FAN);
+					/* If it's wireframe, we don't care about the centerpoint */
+					for (k=wireframe? 1: 0;k<5;k++)
 					{
 						int p=gridmap(i,j,k);
 						set_height_color(points[p].point.y);
@@ -242,7 +249,7 @@ void draw()
 	glutSwapBuffers();
 }
 
-void keyb(int key,int mx,int my)
+void keybs(int key,int mx,int my)
 {
     switch (key)
     {
@@ -251,6 +258,19 @@ void keyb(int key,int mx,int my)
 	case GLUT_KEY_UP: Camera.alpha+=M_PI/36; break;
 	case GLUT_KEY_DOWN: Camera.alpha-=M_PI/36; break;
 	case GLUT_KEY_F1: exit(0); break;
+    }
+    draw();
+}
+
+void keyb(unsigned char key,int mx,int my)
+{
+	static short wireframe=0;
+    switch (key)
+    {
+	case 'w': case 'W': wireframe=!wireframe; create_lists(wireframe); break;
+	case '-': Camera.dist*= 1.1; break;
+	case '+': Camera.dist*= 0.9; break;
+	case 'r': case 'R': generate_landscape(0); create_lists(wireframe); break;
     }
     draw();
 }
@@ -276,12 +296,16 @@ int main(int argc,char *argv[])
 	glClearColor(0.0,0.0,0.0,0.0);
 	glEnable(GL_DEPTH_TEST);
 	glShadeModel(GL_SMOOTH);
-	create_lists();
+	
+	generate_landscape(0);
+	create_lists(0);
+	
 	glutReshapeFunc(size);
 	glutDisplayFunc(draw);
 	glutMouseFunc(mouse);
 	glutMotionFunc(motion);
-	glutSpecialFunc(keyb);
+	glutSpecialFunc(keybs);
+	glutKeyboardFunc(keyb);
 	glutMainLoop();
 	return 0;
 }
